@@ -99,7 +99,7 @@ public class CPD {
 		int notsize = Integer.parseInt(enls[0]);
 		this.excl = new HashSet<Integer>(notsize);
 		for (int i = 1; i < enls.length; i++) {
-			this.excl.add(Integer.parseInt(enls[1].trim()));
+			this.excl.add(Integer.parseInt(enls[i].trim()));
 		}
 		this.result = new ArrayList<Integer>(this.level+this.cand.size()/2);
 		if(level>1){

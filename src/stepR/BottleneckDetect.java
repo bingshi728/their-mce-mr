@@ -16,12 +16,20 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.StringTokenizer;
 
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Partitioner;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.Reducer.Context;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.util.GenericOptionsParser;
+
 
 import step1.CPD;
 
@@ -53,7 +61,7 @@ public class BottleneckDetect {
 	public static boolean balanceOrNot = false;
 	public static long tPhase = 0;
 	public static int NodeSN = 0;
-	public static File dirRoot = new File("/home/youli/CliqueHadoop/");
+	public static File dirRoot = new File("/home/dic/CliqueHadoop/");
 	public static File serial = new File(dirRoot, "serialNumber.txt");
 	public static RandomAccessFile raf = null;
 	public static int which = 0;// 区分reduce的唯一编号，用于写数据文件
@@ -102,7 +110,7 @@ public class BottleneckDetect {
 
 		HashSet<Integer> notset = new HashSet<Integer>();
 		HashMap<Integer, Integer> cand = new HashMap<Integer, Integer>();
-
+		boolean reducefinished = false;
 		@Override
 		protected void setup(Context context) throws IOException,
 				InterruptedException {
@@ -182,14 +190,32 @@ public class BottleneckDetect {
 					rafcur.close();
 			}
 			// 获得唯一编号后打开文件
-			File curReduce = new File(dirRoot, which + "");
+			File curReduce = new File(dirRoot, "/outresult/bkpb/"+which + "");
 			raf = new RandomAccessFile(curReduce, "rw");
+			System.out.println("this reducer is number:"+which+" and create file:"+curReduce.getPath());
+
 		}
 		@Override
 		protected void cleanup(Context context)
 				throws IOException, InterruptedException {
-
-			if (raf.getFilePointer() != 0 && tPhase < TimeThreshold) {// 文件中有内容
+			if(!reducefinished){
+				System.out.print("this task is killed before reduce was finished" +
+						"so delete the file and return;");
+				raf.close();
+				File f = new File(dirRoot, "/outresult/bkpb/"+which + "");
+				boolean RES = f.delete();
+				System.out.println("this reducer is number:"+which+" " +
+						"and raf is empty so delete file:"+f.getPath()+" --"+RES);
+				super.cleanup(context);
+				return;
+			}
+			if(raf.getFilePointer()==0){
+				raf.close();
+				File f = new File(dirRoot, "/outresult/bkpb/"+which + "");
+				boolean RES = f.delete();
+				System.out.println("this reducer is number:"+which+" " +
+						"and raf is empty so delete file:"+f.getPath()+" --"+RES);
+			}else if (tPhase < TimeThreshold) {// 文件中有内容
 
 				Stack<CPD> stack = new Stack<CPD>();
 				verEdge.clear();
@@ -197,8 +223,9 @@ public class BottleneckDetect {
 				result = null;
 				raf.seek(0);
 				// 重新写入这个文件，原来的文件作废，最后将其删除！
-				RandomAccessFile rnew = new RandomAccessFile(new File(dirRoot,
-						which + "#"), "rw");
+				RandomAccessFile rnew = new RandomAccessFile(new File(dirRoot, "/outresult/bkpb/"+which + "#"), "rw");
+				System.out.println("this reducer is number:"+which+" " +
+						"and in cleanup so create file:"+"/outresult/bkpb/"+which + "#");
 				String line = "";
 				long t1 = System.currentTimeMillis();
 				long t2 = System.currentTimeMillis();
@@ -305,9 +332,23 @@ public class BottleneckDetect {
 					rnew.write(line.getBytes());
 					rnew.write("\n".getBytes());
 				}
-				rnew.close();
+				raf.close();
+				File endf = new File(dirRoot, "/outresult/bkpb/"+which + "");
+				boolean endRES = endf.delete();
+				System.out.println("this reducer is number:"+which+" " +
+						"and clean up to end, so delete file:"+endf.getPath()+" --"+endRES);
+				if(rnew.getFilePointer()==0){
+					File tf = new File(dirRoot, "/outresult/bkpb/"+which + "#");
+					boolean ntr = tf.delete();
+					System.out.println("this reducer is number:"+which+" " +
+							"and clean up to end & rnew is empty, so delete file:"+tf.getPath()+" --"+ntr);
+				}else{
+					rnew.close();
+				}
+			}else{
+				raf.close();
 			}
-			raf.close();
+			
 			super.cleanup(context);
 		}
 		private int maxdeg;
@@ -440,6 +481,7 @@ public class BottleneckDetect {
 				writeVerEdge(verEdge, raf);
 				raf.write(("\n").getBytes());
 			}
+			reducefinished = true;
 		}
 		private void writeVerEdge(HashMap<Integer, HashSet<Integer>> edge,
 				RandomAccessFile rf) throws IOException {
@@ -662,13 +704,50 @@ public class BottleneckDetect {
 			return false;
 		}
 	}
+	public static class BottleneckPartitioner extends Partitioner<PairTypeInt,Text> {
 
+		@Override
+		public int getPartition(PairTypeInt key, Text value, int num) {
+			return (key.getB())%num;//平均分配到各个计算节点之上
+		}
+
+	}
 	/**
 	 * @param args
+	 * @throws IOException 
+	 * @throws ClassNotFoundException 
+	 * @throws InterruptedException 
 	 */
-	public static void main(String[] args) {
-		// TODO Auto-generated method stub
-
+	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException {
+		Configuration conf = new Configuration();
+		String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
+	    if (otherArgs.length != 3) {
+	      System.err.println("Usage: CliqueMain <in> <out> <reducenum>");
+	      System.exit(2);
+	    }
+		String in=args[0];
+		String pre=args[1];
+		int reducenum=Integer.valueOf(args[2]);
+		
+		
+		Job job = new Job(conf,"their bottle neck clique");	
+		job.setJarByClass(BottleneckDetect.class);
+		job.setMapperClass(BottleneckDetectMapper.class);
+		job.setPartitionerClass(BottleneckPartitioner.class);
+		job.setReducerClass(BKPBReducer.class);
+		
+		job.setMapOutputKeyClass(PairTypeInt.class);
+		job.setMapOutputValueClass(Text.class);
+		job.setOutputKeyClass(IntWritable.class);
+		job.setOutputValueClass(Text.class);
+		job.setNumReduceTasks(reducenum);
+		FileInputFormat.addInputPath(job, new Path(in));
+		FileOutputFormat.setOutputPath(job, new Path(pre+"_result_bkpb"));
+		long t1 = System.currentTimeMillis();
+		job.waitForCompletion(true);
+		long t2 = System.currentTimeMillis();
+		System.out.println(pre+"-phase cost:"+ (t2-t1));
 	}
 
 }
+

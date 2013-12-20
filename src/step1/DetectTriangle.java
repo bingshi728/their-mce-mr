@@ -29,6 +29,7 @@ import org.apache.hadoop.util.GenericOptionsParser;
 
 
 
+
 public class DetectTriangle {
 	public static HashMap<Integer, Integer> vertex = new HashMap<Integer, Integer>(
 			3000);
@@ -56,7 +57,7 @@ public class DetectTriangle {
 	public static boolean balanceOrNot = false;
 	public static long tPhase = 0;
 	public static int NodeSN = 0;
-	public static File dirRoot = new File("/home/youli/CliqueHadoop/");
+	public static File dirRoot = new File("/home/dic/CliqueHadoop/");
 	public static File serial = new File(dirRoot, "serialNumber.txt");
 	public static RandomAccessFile raf = null;
 	public static int which = 0;// 区分reduce的唯一编号，用于写数据文件
@@ -101,8 +102,13 @@ public class DetectTriangle {
 		@Override
 		protected void cleanup(Context context)
 				throws IOException, InterruptedException {
-
-			if (raf.getFilePointer() != 0 && tPhase < TimeThreshold) {// 文件中有内容
+			if(raf.getFilePointer() == 0){
+				raf.close();
+				File f = new File(dirRoot, "/outresult/bkpb/"+which + "");
+				boolean RES = f.delete();
+				System.out.println("this reducer is number:"+which+" " +
+						"and raf is empty so delete file:"+f.getPath()+" --"+RES);
+			}else if (tPhase < TimeThreshold) {// 文件中有内容
 
 				Stack<CPD> stack = new Stack<CPD>();
 				verEdge.clear();
@@ -111,7 +117,9 @@ public class DetectTriangle {
 				raf.seek(0);
 				// 重新写入这个文件，原来的文件作废，最后将其删除！
 				RandomAccessFile rnew = new RandomAccessFile(new File(dirRoot,
-						which + "#"), "rw");
+						"/outresult/bkpb/"+which + "#"), "rw");
+				System.out.println("this reducer is number:"+which+" " +
+						"and in cleanup so create file:"+"/outresult/bkpb/"+which + "#");
 				String line = "";
 				long t1 = System.currentTimeMillis();
 				long t2 = System.currentTimeMillis();
@@ -207,7 +215,6 @@ public class DetectTriangle {
 						writeVerEdge(verEdge, rnew);
 						rnew.write(("\n").getBytes());// rnew.write(("\n0\t0\n").getBytes());
 					}
-
 					if (tPhase > TimeThreshold) {
 						break;
 					}
@@ -218,9 +225,23 @@ public class DetectTriangle {
 					rnew.write(line.getBytes());
 					rnew.write("\n".getBytes());
 				}
-				rnew.close();
+				
+				raf.close();
+				File endf = new File(dirRoot, "/outresult/bkpb/"+which + "");
+				boolean endRES = endf.delete();
+				System.out.println("this reducer is number:"+which+" " +
+						"and clean up to end, so delete file:"+endf.getPath()+" --"+endRES);
+				if(rnew.getFilePointer()==0){
+					File tf = new File(dirRoot, "/outresult/bkpb/"+which + "#");
+					boolean ntr = tf.delete();
+					System.out.println("this reducer is number:"+which+" " +
+							"and clean up to end & rnew is empty, so delete file:"+tf.getPath()+" --"+ntr);
+				}else{
+					rnew.close();
+				}
+			}else{
+				raf.close();
 			}
-			raf.close();
 			super.cleanup(context);
 		}
 
@@ -265,17 +286,14 @@ public class DetectTriangle {
 					HashSet<Integer> tmp = verEdge.get(node1);
 					if (tmp != null) {
 						tmp.add(node2);
-						// verEdge.put(node1, tmp);
 					} else {
 						tmp = new HashSet<Integer>();
-						// tmp.add(node1);
 						tmp.add(node2);
 						verEdge.put(node1, tmp);
 					}
 					tmp = verEdge.get(node2);
 					if (tmp != null) {
 						tmp.add(node1);
-						// verEdge.put(node2, tmp);
 					} else {
 						tmp = new HashSet<Integer>();
 						tmp.add(node1);
@@ -296,6 +314,7 @@ public class DetectTriangle {
 				}
 				if (tcand.size() < MaxOne)
 					return;
+				
 				long t1 = System.currentTimeMillis();
 				long t2 = System.currentTimeMillis();
 				CPD top = new CPD(tmpKey, 1, vertex, tnot);
@@ -405,8 +424,10 @@ public class DetectTriangle {
 			}
 
 		}
+		
 		public void test(String file) throws IOException, InterruptedException{
-			this.readInData(file);
+			this.readEdgeInfo(file);
+			tmpKey = 133094;
 			Iterator<Map.Entry<Integer, Integer>> iter = vertex.entrySet()
 					.iterator();
 			HashMap<Integer, Integer> tcand = new HashMap<Integer, Integer>();
@@ -425,50 +446,51 @@ public class DetectTriangle {
 			long t2 = System.currentTimeMillis();
 			CPD top = new CPD(tmpKey, 1, vertex, tnot);
 			
-					HashSet<Integer> notset = top.getExcl();
-					HashMap<Integer, Integer> cand = top.getCand();
-					int level = top.getLevel();
-					int vp = top.getVisitedPoint();
-					if (allContained(cand, notset)) {
-						return;
-					}
-					if (result.size() + 1 == level) {
-						result.add(vp);
-					} else {
-						result.set(level - 1, vp);
-					}
-					if (cand.isEmpty()) {
-						if (notset.isEmpty()) {
-							//emitClique(result, level, cand, context);
-						}
-						return;
-					}
-					int fixp = findMaxDegreePoint(cand);
-					ArrayList<Integer> noneFixp = new ArrayList<Integer>(
-							cand.size() - maxdeg);
-					HashMap<Integer, Integer> tmpcand = genInterSet(cand,
-							fixp, maxdeg, noneFixp);
-					HashSet<Integer> tmpnot = genInterSet(notset, fixp);
-					CPD tmp = new CPD(fixp, level + 1, tmpcand, tmpnot);
-					if (tmpcand.size() <= 4000) {
-						enumerateClique(tmp,null);
-					} else {
-						//spillToDisk(tmp, raf);
-					}
-					notset.add(fixp);
-					for (int fix : noneFixp) {
-						HashMap<Integer, Integer> tcd = genInterSet(cand,
-								fix);
-						HashSet<Integer> tnt = genInterSet(notset, fix);
-						CPD temp = new CPD(fix, level + 1, tcd, tnt);
-						if (tcd.size() <= 4000) {
-							enumerateClique(temp,null);
-						} else {
-						//	spillToDisk(temp, raf);
-						}
-						notset.add(fix);
-					}
-			
+			HashSet<Integer> notset = top.getExcl();
+			HashMap<Integer, Integer> cand = top.getCand();
+			int level = top.getLevel();
+			int vp = top.getVisitedPoint();
+			if (allContained(cand, notset)) {
+				return;
+			}
+			if (result.size() + 1 == level) {
+				result.add(vp);
+			} else {
+				result.set(level - 1, vp);
+			}
+			if (cand.isEmpty()) {
+				if (notset.isEmpty()) {
+					emitClique(result, level, cand, null);
+				}
+				return;
+			}
+			int fixp = findMaxDegreePoint(cand);
+			ArrayList<Integer> noneFixp = new ArrayList<Integer>(
+					cand.size() - maxdeg);
+			HashMap<Integer, Integer> tmpcand = genInterSet(cand,
+					fixp, maxdeg, noneFixp);
+			HashSet<Integer> tmpnot = genInterSet(notset, fixp);
+			CPD tmp = new CPD(fixp, level + 1, tmpcand, tmpnot);
+			if (tmpcand.size() <= 400340000) {
+				enumerateClique(tmp,null);
+			} else {
+				spillToDisk(tmp, raf);
+				System.out.println("error out ");
+			}
+			notset.add(fixp);
+			for (int fix : noneFixp) {
+				HashMap<Integer, Integer> tcd = genInterSet(cand,
+						fix);
+				HashSet<Integer> tnt = genInterSet(notset, fix);
+				CPD temp = new CPD(fix, level + 1, tcd, tnt);
+				if (tcd.size() <= 400340000) {
+					enumerateClique(temp,null);
+				} else {
+					spillToDisk(temp, raf);
+					System.out.println("error out ");
+				}
+				notset.add(fix);
+			}
 		}
 		/**
 		 * compute a small subgraph to finish
@@ -508,8 +530,8 @@ public class DetectTriangle {
 						for (int i : cand.keySet()) {
 							sb.append(i).append(" ");
 						}
-						System.out.println(sb.toString());
-						*/
+						System.out.println(sb.toString());*/
+						
 					}
 					continue;
 				}
@@ -610,14 +632,14 @@ public class DetectTriangle {
 					rafcur.close();
 			}
 			// 获得唯一编号后打开文件
-			File curReduce = new File(dirRoot, which + "");
+			File curReduce = new File(dirRoot, "/outresult/bkpb/"+which + "");
 			raf = new RandomAccessFile(curReduce, "rw");
+			System.out.println("this reducer is number:"+which+" and create file:"+curReduce.getPath());
 		}
 
 		private void writeVerEdge(HashMap<Integer, HashSet<Integer>> edge,
 				RandomAccessFile rf) throws IOException {
 			for (Map.Entry<Integer, HashSet<Integer>> en : edge.entrySet()) {
-				// rf.write(en.getKey());
 				rf.write((en.getKey() + "=").getBytes());
 				Iterator<Integer> it = en.getValue().iterator();
 				rf.write(it.next().toString().getBytes());
@@ -647,15 +669,6 @@ public class DetectTriangle {
 			}
 			while (it.hasNext())
 				noneFixp.add(it.next());
-
-			/**
-			 * HashSet<Integer> small ,big; if(adj.size()>cand.size()){ small =
-			 * (HashSet<Integer>) cand.keySet(); big = adj; }else{ big =
-			 * (HashSet<Integer>) cand.keySet(); small = adj; }
-			 * Iterator<Integer> it = small.iterator(); int tmp; while(acc <
-			 * maxdeg && it.hasNext()){ tmp = it.next(); if(big.contains(tmp)){
-			 * acc++; result.put(tmp, 0); } }
-			 */
 			return result;
 		}
 
@@ -715,8 +728,10 @@ public class DetectTriangle {
 			for (int i : cand.keySet()) {
 				sb.append(i).append(" ");
 			}
+			//System.out.println(result.get(0)+" "+sb.toString());
 			context.write(new IntWritable(result.get(0)),
 					new Text(sb.toString()));
+			//raf.write((result.get(0)+" "+sb.toString()).getBytes());
 		}
 
 		private HashMap<Integer, Integer> genInterSet(
@@ -771,27 +786,55 @@ public class DetectTriangle {
 			}
 			return false;
 		}
+		public void readEdgeInfo(String filename) throws IOException{
+			BufferedReader reader = new BufferedReader(new FileReader(filename));
+			String line = "";
+			line = reader.readLine();
+			readVerEdge(line,verEdge,1);
+			for(int k:verEdge.keySet()){
+				vertex.put(k, 0);
+			}
+		}
+		private void readVerEdge(String s,
+				HashMap<Integer, HashSet<Integer>> edge,int i) {
+			String[] items = s.split("], ");
+			for (String item : items) {
+				String[] abs = item.split("=");
+				int key = Integer.parseInt(abs[0]);
+				String[] values = abs[1].substring(1, abs[1].length()).split(", ");
+				HashSet<Integer> adjs = new HashSet<Integer>();
+				for (String value : values)
+					adjs.add(Integer.parseInt(value.endsWith("]")?value.substring(0, value.length()-1):value));
+				edge.put(key, adjs);
+			}
+		}
 	}
 
+
+/**
+public static void main(String[]args) throws NumberFormatException, IOException, InterruptedException{
+	DetectTriangle.BKPBReducer reducer = new DetectTriangle.BKPBReducer();
+	reducer.setup(null);
+	reducer.test("/home/youli/CliqueHadoop/test");
+}*/
 	/**
 	 * @param args
 	 * @throws IOException 
 	 * @throws ClassNotFoundException 
 	 * @throws InterruptedException 
-	 */
+	*/
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException {
-/**
-		new DetectTriangle.BKPBReducer().test("/home/youli/CliqueHadoop/test");
-	*/	
+
 		Configuration conf = new Configuration();
 		String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
-	    if (otherArgs.length != 3) {
+	    if (otherArgs.length < 3) {
 	      System.err.println("Usage: CliqueMain <in> <out> <reducenum>");
 	      System.exit(2);
 	    }
-		String in=args[0];
-		String pre=args[1];
-		int reducenum=Integer.valueOf(args[2]);
+		//String in=args[0];
+	    int arglen = args.length;
+		String pre=args[arglen -2];
+		int reducenum=Integer.valueOf(args[arglen-1]);
 		
 		Job job = new Job(conf,"detect clique");	
 		
@@ -803,14 +846,14 @@ public class DetectTriangle {
 		job.setOutputKeyClass(IntWritable.class);
 		job.setOutputValueClass(Text.class);
 		job.setNumReduceTasks(reducenum);
-		FileInputFormat.addInputPath(job, new Path(in));
+		for(int i = 0; i < arglen -2;i++)
+			FileInputFormat.addInputPath(job, new Path(args[i]));
 		FileOutputFormat.setOutputPath(job, new Path(pre+"_result_bkpb"));
 		
 		long t1 = System.currentTimeMillis();
 		job.waitForCompletion(true);
 		long t2 = System.currentTimeMillis();
 		System.out.println(pre + "-phase cost:"+(t2-t1));
-		
-	}
+	} 
 
 }
