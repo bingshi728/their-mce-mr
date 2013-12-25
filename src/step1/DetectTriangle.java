@@ -200,7 +200,7 @@ public class DetectTriangle {
 						if (tPhase > TimeThreshold) {
 							break;
 						}
-					}
+					}//while stack is not empty
 					
 					boolean needtospillveredge = !stack.empty();
 					while (!stack.empty()) {
@@ -218,7 +218,7 @@ public class DetectTriangle {
 					if (tPhase > TimeThreshold) {
 						break;
 					}
-				}
+				}//while raf hasn't reach the file end
 				
 				while ((line = raf.readLine()) != null) {
 					// 把原文件后面的内容直接考到新文件后面

@@ -110,7 +110,7 @@ public class BottleneckDetect {
 
 		HashSet<Integer> notset = new HashSet<Integer>();
 		HashMap<Integer, Integer> cand = new HashMap<Integer, Integer>();
-		boolean reducefinished = false;
+		//boolean reducefinished = false;
 		@Override
 		protected void setup(Context context) throws IOException,
 				InterruptedException {
@@ -198,17 +198,6 @@ public class BottleneckDetect {
 		@Override
 		protected void cleanup(Context context)
 				throws IOException, InterruptedException {
-			if(!reducefinished){
-				System.out.print("this task is killed before reduce was finished" +
-						"so delete the file and return;");
-				raf.close();
-				File f = new File(dirRoot, "/outresult/bkpb/"+which + "");
-				boolean RES = f.delete();
-				System.out.println("this reducer is number:"+which+" " +
-						"and raf is empty so delete file:"+f.getPath()+" --"+RES);
-				super.cleanup(context);
-				return;
-			}
 			if(raf.getFilePointer()==0){
 				raf.close();
 				File f = new File(dirRoot, "/outresult/bkpb/"+which + "");
@@ -216,7 +205,6 @@ public class BottleneckDetect {
 				System.out.println("this reducer is number:"+which+" " +
 						"and raf is empty so delete file:"+f.getPath()+" --"+RES);
 			}else if (tPhase < TimeThreshold) {// 文件中有内容
-
 				Stack<CPD> stack = new Stack<CPD>();
 				verEdge.clear();
 				stack.clear();
@@ -375,7 +363,7 @@ public class BottleneckDetect {
 						if (ver.contains("%")) {
 							// 是不全的子图
 							stack.add(new CPD(ver));
-						} else {
+						} else if(verEdge.size()==0){
 							// 是邻接表
 							readVerEdge(ver, verEdge);
 						}
@@ -398,7 +386,7 @@ public class BottleneckDetect {
 									+ tmpKey + "@").getBytes());
 							raf.write(ver.getBytes());
 							raf.write("\n".getBytes());
-						} else {
+						} else if(edgestr.length()==0){
 							edgestr = ver;
 						}
 					} else {
@@ -481,7 +469,6 @@ public class BottleneckDetect {
 				writeVerEdge(verEdge, raf);
 				raf.write(("\n").getBytes());
 			}
-			reducefinished = true;
 		}
 		private void writeVerEdge(HashMap<Integer, HashSet<Integer>> edge,
 				RandomAccessFile rf) throws IOException {
