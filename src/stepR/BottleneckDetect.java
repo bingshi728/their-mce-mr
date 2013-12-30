@@ -30,7 +30,6 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 
-
 import step1.CPD;
 
 public class BottleneckDetect {
@@ -194,6 +193,7 @@ public class BottleneckDetect {
 			raf = new RandomAccessFile(curReduce, "rw");
 			System.out.println("this reducer is number:"+which+" and create file:"+curReduce.getPath());
 
+			t1 = System.currentTimeMillis();
 		}
 		@Override
 		protected void cleanup(Context context)
@@ -242,6 +242,7 @@ public class BottleneckDetect {
 					}
 					//一个完整的子图已经读进来了，下面计算
 					parts.clear();
+					balanceOrNot = false;
 					while(!stack.empty()){
 						CPD top = stack.pop();
 						HashSet<Integer> notset = top.getExcl();
@@ -262,7 +263,12 @@ public class BottleneckDetect {
 						} else {
 							result.set(level - 1, vp);
 						}
-						
+						if (cand.isEmpty()) {
+							if (notset.isEmpty()) {
+								emitClique(result, level, cand, context);
+							}
+							continue;
+						}
 						int fixp = findMaxDegreePoint(cand);
 						ArrayList<Integer> noneFixp = new ArrayList<Integer>(
 								cand.size() - maxdeg);
@@ -281,27 +287,32 @@ public class BottleneckDetect {
 									fix);
 							HashSet<Integer> tnt = genInterSet(notset, fix);
 							CPD temp = new CPD(fix, level + 1, tcd, tnt);
-							if (tcd.size() <= sizeN) {
-								enumerateClique(temp,context);
-							} else {
-								stack.add(temp);
+							if(tPhase < TimeThreshold){
+								if (tcd.size() <= sizeN) {
+									enumerateClique(temp,context);
+								} else {
+									stack.add(temp);
+								}
+							}else{
+								spillToDisk(temp,rnew);
 							}
 							notset.add(fix);
+							if(tPhase < TimeThreshold){
+								t2 = System.currentTimeMillis();
+								tPhase += (t2 - t1);
+								t1 = t2;
+							}
 						}
-						t2 = System.currentTimeMillis();
-						tPhase += (t2 - t1);
-						t1 = t2;
 						if (tPhase > TimeThreshold) {
 							break;
 						}
 					}
 					
-					boolean needtospillveredge = !stack.empty();
 					while (!stack.empty()) {
 						// 退出了栈还没空，说明时间到了还没计算完，把栈中的子图spill到磁盘
 						spillToDisk(stack.pop(), rnew);
 					}
-					if (needtospillveredge) {
+					if (balanceOrNot) {
 						rnew.write(((-2) + "\t" + 1 + "#" ).getBytes());
 						String pas = parts.toString();
 						rnew.write(pas.substring(1, pas.length()-1).getBytes());
@@ -340,7 +351,7 @@ public class BottleneckDetect {
 			super.cleanup(context);
 		}
 		private int maxdeg;
-
+		long t1;
 		protected void reduce(PairTypeInt key, Iterable<Text> values,
 				Context context) throws IOException, InterruptedException {
 			tmpKey = key.getC();
@@ -376,13 +387,16 @@ public class BottleneckDetect {
 			} else {
 				// 边邻接信息写在最后
 				String edgestr = "";
+				parts.clear();
 				for (Text t : values) {
 					System.out.println("out" + t.toString());
 					NodeSN++;
 					String ver = t.toString();
 					if (type == 1) {
 						if (ver.contains("%")) {
-							raf.write(("-1\t1@" + NodeSN % totalPart + "@"
+							int p = NodeSN %totalPart;
+							parts.add(p);
+							raf.write(("-1\t1@" + p + "@"
 									+ tmpKey + "@").getBytes());
 							raf.write(ver.getBytes());
 							raf.write("\n".getBytes());
@@ -396,13 +410,14 @@ public class BottleneckDetect {
 						raf.write("\n".getBytes());
 					}
 				}
-				raf.write(((-2) + "\t" + 1 + "#" + key.getB()).getBytes());
+				String pstr = parts.toString();
+				raf.write(((-2) + "\t" + 1 + "#" +pstr.substring(1, pstr.length()-1)).getBytes());
+				
 				raf.write(("#" + tmpKey + "#").getBytes());
 				raf.write(edgestr.getBytes());
 				raf.write("\n".getBytes());
 				return;
 			}
-			long t1 = System.currentTimeMillis();
 			long t2 = System.currentTimeMillis();
 			while (!stack.empty()) {
 				if (tPhase < TimeThreshold) // 时间小于阈值
@@ -426,7 +441,12 @@ public class BottleneckDetect {
 					} else {
 						result.set(level - 1, vp);
 					}
-
+					if (cand.isEmpty()) {
+						if (notset.isEmpty()) {
+							emitClique(result, level, cand, context);
+						}
+						continue;
+					}
 					int fixp = findMaxDegreePoint(cand);
 					ArrayList<Integer> noneFixp = new ArrayList<Integer>(
 							cand.size() - maxdeg);
@@ -444,16 +464,19 @@ public class BottleneckDetect {
 						HashMap<Integer, Integer> tcd = genInterSet(cand, fix);
 						HashSet<Integer> tnt = genInterSet(notset, fix);
 						CPD temp = new CPD(fix, level + 1, tcd, tnt);
-						if (tcd.size() <= sizeN) {
+						if (tcd.size() <= sizeN && tPhase < TimeThreshold) {
 							enumerateClique(temp, context);
 						} else {
 							spillToDisk(temp,raf);
 						}
 						notset.add(fix);
+						if(tPhase < TimeThreshold){
+							t2 = System.currentTimeMillis();
+							tPhase += (t2 - t1);
+							t1 = t2;
+						}
 					}
-					t2 = System.currentTimeMillis();
-					tPhase += (t2 - t1);
-					t1 = t2;
+					
 				} else {
 					break;
 				}
@@ -556,13 +579,6 @@ public class BottleneckDetect {
 				if (cand.isEmpty()) {
 					if (notset.isEmpty()) {
 						emitClique(result, level, cand, context);
-						/**
-						 * StringBuilder sb = new StringBuilder(); for (int i =
-						 * 0; i < level; i++) {
-						 * sb.append(result.get(i)).append(" "); } for (int i :
-						 * cand.keySet()) { sb.append(i).append(" "); }
-						 * System.out.println(sb.toString());
-						 */
 					}
 					continue;
 				}

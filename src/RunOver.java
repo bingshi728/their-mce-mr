@@ -53,7 +53,7 @@ public class RunOver {
 
 		String in = "bkpbinputR";
 
-		Job job = new Job(conf, "bkpb step2");
+		Job job = new Job(conf, "bkpb step "+pre);
 
 		job.setJarByClass(stepR.BottleneckDetect.class);
 		job.setMapperClass(stepR.BottleneckDetect.BottleneckDetectMapper.class);

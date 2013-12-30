@@ -102,6 +102,7 @@ public class DetectTriangle {
 		@Override
 		protected void cleanup(Context context)
 				throws IOException, InterruptedException {
+			t1 = System.currentTimeMillis();
 			if(raf.getFilePointer() == 0){
 				raf.close();
 				File f = new File(dirRoot, "/outresult/bkpb/"+which + "");
@@ -121,7 +122,6 @@ public class DetectTriangle {
 				System.out.println("this reducer is number:"+which+" " +
 						"and in cleanup so create file:"+"/outresult/bkpb/"+which + "#");
 				String line = "";
-				long t1 = System.currentTimeMillis();
 				long t2 = System.currentTimeMillis();
 				while ((line = raf.readLine()) != null) {
 					String[] ab = line.split("\t");
@@ -148,6 +148,7 @@ public class DetectTriangle {
 					}
 					//一个完整的子图已经读进来了，下面计算
 					parts.clear();
+					balanceOrNot = false;
 					while(!stack.empty()){
 						CPD top = stack.pop();
 						HashSet<Integer> notset = top.getExcl();
@@ -168,7 +169,12 @@ public class DetectTriangle {
 						} else {
 							result.set(level - 1, vp);
 						}
-						
+						if (cand.isEmpty()) {
+							if (notset.isEmpty()) {
+								emitClique(result, level, cand, context);
+							}
+							continue;
+						}
 						int fixp = findMaxDegreePoint(cand);
 						ArrayList<Integer> noneFixp = new ArrayList<Integer>(
 								cand.size() - maxdeg);
@@ -187,27 +193,34 @@ public class DetectTriangle {
 									fix);
 							HashSet<Integer> tnt = genInterSet(notset, fix);
 							CPD temp = new CPD(fix, level + 1, tcd, tnt);
-							if (tcd.size() <= sizeN) {
-								enumerateClique(temp,context);
-							} else {
-								stack.add(temp);
+							if(tPhase < TimeThreshold){
+								if (tcd.size() <= sizeN) {
+									enumerateClique(temp,context);
+								} else {
+									stack.add(temp);
+								}
+							}else{
+								spillToDisk(temp,rnew);
 							}
+							
 							notset.add(fix);
+							if(tPhase < TimeThreshold){
+								t2 = System.currentTimeMillis();
+								tPhase += (t2 - t1);
+								t1 = t2;
+							}
 						}
-						t2 = System.currentTimeMillis();
-						tPhase += (t2 - t1);
-						t1 = t2;
+						
 						if (tPhase > TimeThreshold) {
 							break;
 						}
 					}//while stack is not empty
 					
-					boolean needtospillveredge = !stack.empty();
 					while (!stack.empty()) {
 						// 退出了栈还没空，说明时间到了还没计算完，把栈中的子图spill到磁盘
 						spillToDisk(stack.pop(), rnew);
 					}
-					if (needtospillveredge) {
+					if (balanceOrNot) {
 						rnew.write(((-2) + "\t" + 1 + "#" ).getBytes());
 						String pas = parts.toString();
 						rnew.write(pas.substring(1, pas.length()-1).getBytes());
@@ -246,7 +259,7 @@ public class DetectTriangle {
 		}
 
 		private int maxdeg;
-
+		long t1;
 		protected void reduce(IntWritable key, Iterable<Text> values,
 				Context context)
 				throws IOException, InterruptedException {
@@ -315,8 +328,8 @@ public class DetectTriangle {
 				if (tcand.size() < MaxOne)
 					return;
 				
-				long t1 = System.currentTimeMillis();
-				long t2 = System.currentTimeMillis();
+				
+				long t2 ;//= System.currentTimeMillis();
 				CPD top = new CPD(tmpKey, 1, vertex, tnot);
 				
 				if (tPhase < TimeThreshold) {
@@ -356,12 +369,17 @@ public class DetectTriangle {
 									fix);
 							HashSet<Integer> tnt = genInterSet(notset, fix);
 							CPD temp = new CPD(fix, level + 1, tcd, tnt);
-							if (tcd.size() <= sizeN) {
+							if (tcd.size() <= sizeN && tPhase < TimeThreshold) {
 								enumerateClique(temp,context);
 							} else {
 								spillToDisk(temp, raf);
 							}
 							notset.add(fix);
+							if(tPhase < TimeThreshold){
+								t2 = System.currentTimeMillis();
+								tPhase += (t2 - t1);
+								t1 = t2;// 重新设定累计起点
+							}
 						}
 					if(balanceOrNot){
 						raf.write(((-2) + "\t" + 1 + "#" ).getBytes());
@@ -378,10 +396,12 @@ public class DetectTriangle {
 							+ top.toString(result) + "@").getBytes());
 					writeVerEdge(verEdge, raf);
 					raf.write(("\n").getBytes());
+					if(tPhase < TimeThreshold){
+						t2 = System.currentTimeMillis();
+						tPhase += (t2 - t1);
+						t1 = t2;// 重新设定累计起点
+					}
 				}
-				t2 = System.currentTimeMillis();
-				tPhase += (t2 - t1);
-				t1 = t2;// 重新设定累计起点
 			}
 		}
 		private void readInData(String file) throws NumberFormatException, IOException{
@@ -522,16 +542,6 @@ public class DetectTriangle {
 				if (cand.isEmpty()) {
 					if (notset.isEmpty()) {
 						emitClique(result, level, cand, context);
-						/**
-						StringBuilder sb = new StringBuilder();
-						for (int i = 0; i < level; i++) {
-							sb.append(result.get(i)).append(" ");
-						}
-						for (int i : cand.keySet()) {
-							sb.append(i).append(" ");
-						}
-						System.out.println(sb.toString());*/
-						
 					}
 					continue;
 				}
@@ -635,6 +645,8 @@ public class DetectTriangle {
 			File curReduce = new File(dirRoot, "/outresult/bkpb/"+which + "");
 			raf = new RandomAccessFile(curReduce, "rw");
 			System.out.println("this reducer is number:"+which+" and create file:"+curReduce.getPath());
+
+			t1 = System.currentTimeMillis();
 		}
 
 		private void writeVerEdge(HashMap<Integer, HashSet<Integer>> edge,
