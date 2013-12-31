@@ -86,6 +86,8 @@ public class DetectTriangle {
 		HashSet<Integer> notset = new HashSet<Integer>();
 		HashMap<Integer, Integer> cand = new HashMap<Integer, Integer>();
 		
+		long allStart = 0;
+		long allEnd = 0;
 		private void readVerEdge(String s,
 				HashMap<Integer, HashSet<Integer>> edge) {
 			String[] items = s.split(" ");
@@ -256,6 +258,9 @@ public class DetectTriangle {
 				raf.close();
 			}
 			super.cleanup(context);
+			
+			allEnd = System.currentTimeMillis();
+			System.out.println("all time: "+(allEnd - allStart)/1000);
 		}
 
 		private int maxdeg;
@@ -647,6 +652,7 @@ public class DetectTriangle {
 			System.out.println("this reducer is number:"+which+" and create file:"+curReduce.getPath());
 
 			t1 = System.currentTimeMillis();
+			allStart = t1;
 		}
 
 		private void writeVerEdge(HashMap<Integer, HashSet<Integer>> edge,
@@ -733,6 +739,7 @@ public class DetectTriangle {
 		private void emitClique(ArrayList<Integer> result2, int level,
 				HashMap<Integer, Integer> cand, Context context)
 				throws IOException, InterruptedException {
+			/**
 			StringBuilder sb = new StringBuilder();
 			for (int i = 1; i < level; i++) {
 				sb.append(result.get(i)).append(" ");
@@ -740,10 +747,9 @@ public class DetectTriangle {
 			for (int i : cand.keySet()) {
 				sb.append(i).append(" ");
 			}
-			//System.out.println(result.get(0)+" "+sb.toString());
 			context.write(new IntWritable(result.get(0)),
 					new Text(sb.toString()));
-			//raf.write((result.get(0)+" "+sb.toString()).getBytes());
+			*/
 		}
 
 		private HashMap<Integer, Integer> genInterSet(

@@ -74,6 +74,7 @@ public class RunOver {
 		System.out.println(pre + "-phase cost:" + (t2 - t1));
 	}
 
+	static long all = 0;
 	public void dojob(String[] args) throws Exception {
 		Configuration conf = new Configuration();
 		String[] otherArgs = new GenericOptionsParser(conf, args)
@@ -86,9 +87,12 @@ public class RunOver {
 		arglen = args.length;
 		pre = 0;
 		reducenum = Integer.valueOf(args[arglen - 1]);
-
+		long t1 = System.currentTimeMillis();
 		doStep1(args);
+		long t2 = System.currentTimeMillis();
+		all += (t2 - t1);
 		synchronized (this) {
+			this.wait(5000);
 			while (((long) RemoteSSH.getRemoteFilesSize()) != 0) {
 				Process p = Runtime
 						.getRuntime()
@@ -97,19 +101,22 @@ public class RunOver {
 				p.waitFor();
 				p.destroy();
 				RemoteSSH.batch();
-				this.wait(10000);
+				this.wait(15000);
 				pre++;
+				long t11 = System.currentTimeMillis();
 				doStep2(args);
+				long t12 = System.currentTimeMillis();
+				all += (t12 - t11);
+				this.wait(5000);
 			} 
 		}
 
 	}
 
 	public static void main(String[] args) throws Exception {
-		long t1 = System.currentTimeMillis();
+		
 		new RunOver().dojob(args);
-		long t2 = System.currentTimeMillis();
-		System.out.println("all:" + (t2 - t1));
+		System.out.println("all:" + all);
 	}
 
 }

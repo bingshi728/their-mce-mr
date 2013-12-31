@@ -110,6 +110,8 @@ public class BottleneckDetect {
 		HashSet<Integer> notset = new HashSet<Integer>();
 		HashMap<Integer, Integer> cand = new HashMap<Integer, Integer>();
 		//boolean reducefinished = false;
+		long allStart = 0;
+		long allEnd = 0;
 		@Override
 		protected void setup(Context context) throws IOException,
 				InterruptedException {
@@ -194,6 +196,7 @@ public class BottleneckDetect {
 			System.out.println("this reducer is number:"+which+" and create file:"+curReduce.getPath());
 
 			t1 = System.currentTimeMillis();
+			allStart = t1;
 		}
 		@Override
 		protected void cleanup(Context context)
@@ -349,6 +352,8 @@ public class BottleneckDetect {
 			}
 			
 			super.cleanup(context);
+			allEnd = System.currentTimeMillis();
+			System.out.println("all time: "+(allEnd - allStart)/1000);
 		}
 		private int maxdeg;
 		long t1;
@@ -389,7 +394,8 @@ public class BottleneckDetect {
 				String edgestr = "";
 				parts.clear();
 				for (Text t : values) {
-					System.out.println("out" + t.toString());
+					//ai...........
+					//System.out.println("out" + t.toString());
 					NodeSN++;
 					String ver = t.toString();
 					if (type == 1) {
@@ -602,6 +608,7 @@ public class BottleneckDetect {
 		private void emitClique(ArrayList<Integer> result2, int level,
 				HashMap<Integer, Integer> cand, Context context)
 				throws IOException, InterruptedException {
+			/**
 			StringBuilder sb = new StringBuilder();
 			for (int i = 1; i < level; i++) {
 				sb.append(result.get(i)).append(" ");
@@ -611,6 +618,7 @@ public class BottleneckDetect {
 			}
 			context.write(new IntWritable(result.get(0)),
 					new Text(sb.toString()));
+				*/	
 		}
 
 		private HashSet<Integer> genInterSet(HashSet<Integer> notset, int aim) {
