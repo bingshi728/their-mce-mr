@@ -1,3 +1,4 @@
+package main;
 import java.io.IOException;
 import java.net.URI;
 
@@ -36,13 +37,13 @@ public class SumFileSize {
 		System.out.println("共"+size/(1024*1024)+"MB");
 	}
 	public static void do1(String[] args) throws IOException{
-		String uri = "hdfs://172.19.0.122:19000/user/";
+		String uri = "hdfs://"+RunOver.masterhost+"/user/";
 		Configuration conf = new Configuration();
 		FileSystem fs  = FileSystem.get(URI.create(uri),conf);
 		
 		
 		double size = 0L;int num = 0;
-		FileStatus[] fileStatus = fs.listStatus(new Path(uri+"dic/"));
+		FileStatus[] fileStatus = fs.listStatus(new Path(uri+RunOver.usr+"/"));
 		for(FileStatus fstatus : fileStatus){
 			if(!fstatus.isDir() || !fstatus.getPath().getName().contains("result_bkpb"))
 				continue;
@@ -60,7 +61,7 @@ public class SumFileSize {
 			
 		}
 		
-		System.out.println(fileStatus.length+"个文件");
+		System.out.println(num+"个文件");
 		System.out.println("共"+size/(1024*1024)+"MB");
 	}
 }

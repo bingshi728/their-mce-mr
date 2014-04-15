@@ -12,9 +12,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.Stack;
 import java.util.StringTokenizer;
+
+import main.RunOver;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -45,7 +48,7 @@ public class BottleneckDetect {
 	public static int levelNumber = 0;
 	public static int totalPart = 36;
 	public static int tmpKey = 0;
-	public static int count = 0;
+	public static int count = (int)(Math.random()*23);
 	public static boolean done = false;
 	// public static ArrayList<Integer> thenode = new ArrayList<Integer>();//
 	// 需要计算的节点集
@@ -60,7 +63,7 @@ public class BottleneckDetect {
 	public static boolean balanceOrNot = false;
 	public static long tPhase = 0;
 	public static int NodeSN = 0;
-	public static File dirRoot = new File("/home/dic/CliqueHadoop/");
+	public static File dirRoot = new File("/home/"+RunOver.usr+"/CliqueHadoop/");
 	public static File serial = new File(dirRoot, "serialNumber.txt");
 	public static RandomAccessFile raf = null;
 	public static int which = 0;// 区分reduce的唯一编号，用于写数据文件
@@ -91,6 +94,7 @@ public class BottleneckDetect {
 						.nextToken("toend").substring(1)));
 			} else// 边连接信息
 			{
+				try{
 				int type = Integer.valueOf(stk.nextToken("#"));
 				String[] parts = stk.nextToken("#").split(",");
 				int tk = Integer.valueOf(stk.nextToken("#"));
@@ -99,6 +103,12 @@ public class BottleneckDetect {
 				for (String i : parts)
 					context.write(new PairTypeInt(1,
 							Integer.parseInt(i.trim()), tk), new Text(toend));
+				}catch(NoSuchElementException e){
+					System.out.println(str);
+					System.out.println(k+"--------------");
+					System.out.println(kvoriginal[1]);
+					throw e;
+				}
 			}
 
 		}
@@ -195,12 +205,13 @@ public class BottleneckDetect {
 			raf = new RandomAccessFile(curReduce, "rw");
 			System.out.println("this reducer is number:"+which+" and create file:"+curReduce.getPath());
 
-			t1 = System.currentTimeMillis();
-			allStart = t1;
+			allStart = System.currentTimeMillis();
 		}
 		@Override
 		protected void cleanup(Context context)
 				throws IOException, InterruptedException {
+			System.out.println("in clean up tphase="+tPhase+" timethreshold="+TimeThreshold);
+
 			if(raf.getFilePointer()==0){
 				raf.close();
 				File f = new File(dirRoot, "/outresult/bkpb/"+which + "");
@@ -281,6 +292,7 @@ public class BottleneckDetect {
 						CPD tmp = new CPD(fixp, level + 1, tmpcand, tmpnot);
 						if (tmpcand.size() <= sizeN) {
 							enumerateClique(tmp,context);
+							//stack.add(tmp);
 						} else {
 							stack.add(tmp);
 						}
@@ -293,6 +305,7 @@ public class BottleneckDetect {
 							if(tPhase < TimeThreshold){
 								if (tcd.size() <= sizeN) {
 									enumerateClique(temp,context);
+									//stack.add(temp);
 								} else {
 									stack.add(temp);
 								}
@@ -348,6 +361,7 @@ public class BottleneckDetect {
 					rnew.close();
 				}
 			}else{
+				System.out.println("time is already out before cleanup, so close raf and exit");
 				raf.close();
 			}
 			
@@ -359,6 +373,8 @@ public class BottleneckDetect {
 		long t1;
 		protected void reduce(PairTypeInt key, Iterable<Text> values,
 				Context context) throws IOException, InterruptedException {
+			t1 = System.currentTimeMillis();
+			
 			tmpKey = key.getC();
 			int type = key.getA();
 			vertex.clear();
@@ -416,12 +432,15 @@ public class BottleneckDetect {
 						raf.write("\n".getBytes());
 					}
 				}
-				String pstr = parts.toString();
-				raf.write(((-2) + "\t" + 1 + "#" +pstr.substring(1, pstr.length()-1)).getBytes());
+				if(parts.size()>0){//有需要这条边信息的子图才发送.另外如果之前这个点只有未切割过的包含边的子图,那么parts和edgestr必然都为空
+					String pstr = parts.toString();
+					raf.write(((-2) + "\t" + 1 + "#" +pstr.substring(1, pstr.length()-1)).getBytes());
+					
+					raf.write(("#" + tmpKey + "#").getBytes());
+					raf.write(edgestr.getBytes());
+					raf.write("\n".getBytes());
+				}
 				
-				raf.write(("#" + tmpKey + "#").getBytes());
-				raf.write(edgestr.getBytes());
-				raf.write("\n".getBytes());
 				return;
 			}
 			long t2 = System.currentTimeMillis();
@@ -462,8 +481,10 @@ public class BottleneckDetect {
 					CPD tmp = new CPD(fixp, level + 1, tmpcand, tmpnot);
 					if (tmpcand.size() <= sizeN) {
 						enumerateClique(tmp, context);
+						//stack.add(tmp);
 					} else {
-						spillToDisk(tmp,raf);
+						//spillToDisk(tmp,raf);
+						stack.add(tmp);
 					}
 					notset.add(fixp);
 					for (int fix : noneFixp) {
@@ -472,17 +493,19 @@ public class BottleneckDetect {
 						CPD temp = new CPD(fix, level + 1, tcd, tnt);
 						if (tcd.size() <= sizeN && tPhase < TimeThreshold) {
 							enumerateClique(temp, context);
+							//stack.add(temp);
 						} else {
-							spillToDisk(temp,raf);
+							//spillToDisk(temp,raf);
+							stack.add(temp);
 						}
 						notset.add(fix);
-						if(tPhase < TimeThreshold){
-							t2 = System.currentTimeMillis();
-							tPhase += (t2 - t1);
-							t1 = t2;
-						}
 					}
-					
+
+					if(tPhase < TimeThreshold){
+						t2 = System.currentTimeMillis();
+						tPhase += (t2 - t1);
+						t1 = t2;
+					}
 				} else {
 					break;
 				}
@@ -608,7 +631,7 @@ public class BottleneckDetect {
 		private void emitClique(ArrayList<Integer> result2, int level,
 				HashMap<Integer, Integer> cand, Context context)
 				throws IOException, InterruptedException {
-			/**
+			
 			StringBuilder sb = new StringBuilder();
 			for (int i = 1; i < level; i++) {
 				sb.append(result.get(i)).append(" ");
@@ -618,7 +641,7 @@ public class BottleneckDetect {
 			}
 			context.write(new IntWritable(result.get(0)),
 					new Text(sb.toString()));
-				*/	
+			
 		}
 
 		private HashSet<Integer> genInterSet(HashSet<Integer> notset, int aim) {

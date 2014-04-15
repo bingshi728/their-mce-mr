@@ -16,6 +16,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
+import main.RunOver;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -42,7 +44,7 @@ public class DetectTriangle {
 	public static int levelNumber = 0;
 	public static int totalPart = 36;
 	public static int tmpKey = 0;
-	public static int count = 0;
+	public static int count = (int)(Math.random()*23);
 	public static boolean done = false;
 	// public static ArrayList<Integer> thenode = new ArrayList<Integer>();//
 	// 需要计算的节点集
@@ -57,7 +59,7 @@ public class DetectTriangle {
 	public static boolean balanceOrNot = false;
 	public static long tPhase = 0;
 	public static int NodeSN = 0;
-	public static File dirRoot = new File("/home/dic/CliqueHadoop/");
+	public static File dirRoot = new File("/home/"+RunOver.usr+"/CliqueHadoop/");
 	public static File serial = new File(dirRoot, "serialNumber.txt");
 	public static RandomAccessFile raf = null;
 	public static int which = 0;// 区分reduce的唯一编号，用于写数据文件
@@ -104,7 +106,8 @@ public class DetectTriangle {
 		@Override
 		protected void cleanup(Context context)
 				throws IOException, InterruptedException {
-			t1 = System.currentTimeMillis();
+			System.out.println("in clean up tphase="+tPhase+" timethreshold="+TimeThreshold);
+			
 			if(raf.getFilePointer() == 0){
 				raf.close();
 				File f = new File(dirRoot, "/outresult/bkpb/"+which + "");
@@ -124,6 +127,7 @@ public class DetectTriangle {
 				System.out.println("this reducer is number:"+which+" " +
 						"and in cleanup so create file:"+"/outresult/bkpb/"+which + "#");
 				String line = "";
+				t1 = System.currentTimeMillis();
 				long t2 = System.currentTimeMillis();
 				while ((line = raf.readLine()) != null) {
 					String[] ab = line.split("\t");
@@ -186,6 +190,7 @@ public class DetectTriangle {
 						CPD tmp = new CPD(fixp, level + 1, tmpcand, tmpnot);
 						if (tmpcand.size() <= sizeN) {
 							enumerateClique(tmp,context);
+							//stack.add(tmp);
 						} else {
 							stack.add(tmp);
 						}
@@ -198,6 +203,7 @@ public class DetectTriangle {
 							if(tPhase < TimeThreshold){
 								if (tcd.size() <= sizeN) {
 									enumerateClique(temp,context);
+									///stack.add(temp);
 								} else {
 									stack.add(temp);
 								}
@@ -232,6 +238,10 @@ public class DetectTriangle {
 					}
 					if (tPhase > TimeThreshold) {
 						break;
+					}else{
+						t2 = System.currentTimeMillis();
+						tPhase += (t2 - t1);
+						t1 = t2;
 					}
 				}//while raf hasn't reach the file end
 				
@@ -255,6 +265,7 @@ public class DetectTriangle {
 					rnew.close();
 				}
 			}else{
+				System.out.println("time is already out before cleanup, so close raf and exit");
 				raf.close();
 			}
 			super.cleanup(context);
@@ -267,9 +278,10 @@ public class DetectTriangle {
 		long t1;
 		protected void reduce(IntWritable key, Iterable<Text> values,
 				Context context)
-				throws IOException, InterruptedException {
+				throws IOException, InterruptedException {			
 			tmpKey = key.get();
 			if (thenode.contains(tmpKey)) {
+//			if(true){
 				vertex.clear();
 				verEdge.clear();
 				count = 0;
@@ -336,14 +348,18 @@ public class DetectTriangle {
 				
 				long t2 ;//= System.currentTimeMillis();
 				CPD top = new CPD(tmpKey, 1, vertex, tnot);
-				
+				Stack<CPD> stack = new Stack<CPD>();
+				stack.add(top);
 				if (tPhase < TimeThreshold) {
+					while(!stack.empty()){
+						top = stack.pop();
 						HashSet<Integer> notset = top.getExcl();
 						HashMap<Integer, Integer> cand = top.getCand();
 						int level = top.getLevel();
 						int vp = top.getVisitedPoint();
 						if (allContained(cand, notset)) {
-							return;
+							//return;
+							continue;
 						}
 						if (result.size() + 1 == level) {
 							result.add(vp);
@@ -354,7 +370,8 @@ public class DetectTriangle {
 							if (notset.isEmpty()) {
 								emitClique(result, level, cand, context);
 							}
-							return;
+							//return;
+							continue;
 						}
 						int fixp = findMaxDegreePoint(cand);
 						ArrayList<Integer> noneFixp = new ArrayList<Integer>(
@@ -365,8 +382,10 @@ public class DetectTriangle {
 						CPD tmp = new CPD(fixp, level + 1, tmpcand, tmpnot);
 						if (tmpcand.size() <= sizeN) {
 							enumerateClique(tmp,context);
+							//stack.add(tmp);
 						} else {
-							spillToDisk(tmp, raf);
+							//spillToDisk(tmp, raf);
+							stack.add(tmp);
 						}
 						notset.add(fixp);
 						for (int fix : noneFixp) {
@@ -376,16 +395,25 @@ public class DetectTriangle {
 							CPD temp = new CPD(fix, level + 1, tcd, tnt);
 							if (tcd.size() <= sizeN && tPhase < TimeThreshold) {
 								enumerateClique(temp,context);
+								//stack.add(temp);
 							} else {
-								spillToDisk(temp, raf);
+								//spillToDisk(temp, raf);
+								stack.add(temp);
 							}
 							notset.add(fix);
-							if(tPhase < TimeThreshold){
-								t2 = System.currentTimeMillis();
-								tPhase += (t2 - t1);
-								t1 = t2;// 重新设定累计起点
-							}
 						}
+						if(tPhase < TimeThreshold){
+							t2 = System.currentTimeMillis();
+							tPhase += (t2 - t1);
+							t1 = t2;// 重新设定累计起点
+						}else{
+							break;
+						}
+					}
+					while(!stack.empty()){
+						spillToDisk(stack.pop(),raf);
+					}
+
 					if(balanceOrNot){
 						raf.write(((-2) + "\t" + 1 + "#" ).getBytes());
 						String pas = parts.toString();
@@ -401,11 +429,7 @@ public class DetectTriangle {
 							+ top.toString(result) + "@").getBytes());
 					writeVerEdge(verEdge, raf);
 					raf.write(("\n").getBytes());
-					if(tPhase < TimeThreshold){
-						t2 = System.currentTimeMillis();
-						tPhase += (t2 - t1);
-						t1 = t2;// 重新设定累计起点
-					}
+					
 				}
 			}
 		}
@@ -651,8 +675,8 @@ public class DetectTriangle {
 			raf = new RandomAccessFile(curReduce, "rw");
 			System.out.println("this reducer is number:"+which+" and create file:"+curReduce.getPath());
 
+			allStart = System.currentTimeMillis();
 			t1 = System.currentTimeMillis();
-			allStart = t1;
 		}
 
 		private void writeVerEdge(HashMap<Integer, HashSet<Integer>> edge,
@@ -739,7 +763,7 @@ public class DetectTriangle {
 		private void emitClique(ArrayList<Integer> result2, int level,
 				HashMap<Integer, Integer> cand, Context context)
 				throws IOException, InterruptedException {
-			/**
+		
 			StringBuilder sb = new StringBuilder();
 			for (int i = 1; i < level; i++) {
 				sb.append(result.get(i)).append(" ");
@@ -749,7 +773,7 @@ public class DetectTriangle {
 			}
 			context.write(new IntWritable(result.get(0)),
 					new Text(sb.toString()));
-			*/
+		
 		}
 
 		private HashMap<Integer, Integer> genInterSet(

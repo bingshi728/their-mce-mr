@@ -1,3 +1,4 @@
+package main;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -13,7 +14,12 @@ import org.apache.hadoop.util.GenericOptionsParser;
 
 
 public class RunOver {
-
+	
+	public static final String usr = "dic";
+	public static final String passwd = "123123";
+	public static final String masterhost = "test122:19000";
+	public static final String hadoophome = "/home/"+usr+"/hadoop-1.1.2/";
+	public static final boolean spillRes = true;
 	int arglen;
 	int pre = 0;
 	int reducenum;
@@ -29,7 +35,7 @@ public class RunOver {
 
 		job.setJarByClass(step1.DetectTriangle.class);
 		job.setMapperClass(step1.DetectTriangle.BKPBMapper.class);
-		job.setReducerClass(step1.DetectTriangle.BKPBReducer.class);// 换Reducer
+		job.setReducerClass(step1.DetectTriangle.BKPBReducer.class);
 		job.setMapOutputKeyClass(IntWritable.class);
 		job.setMapOutputValueClass(Text.class);
 		job.setOutputKeyClass(IntWritable.class);
@@ -75,6 +81,7 @@ public class RunOver {
 	}
 
 	static long all = 0;
+	static long emitfilesize= 0;
 	public void dojob(String[] args) throws Exception {
 		Configuration conf = new Configuration();
 		String[] otherArgs = new GenericOptionsParser(conf, args)
@@ -92,12 +99,16 @@ public class RunOver {
 		long t2 = System.currentTimeMillis();
 		all += (t2 - t1);
 		synchronized (this) {
+			long thisphasesize = 0;
 			this.wait(5000);
-			while (((long) RemoteSSH.getRemoteFilesSize()) != 0) {
+			emitfilesize = (long) RemoteSSH.getRemoteFilesSize();
+			thisphasesize = emitfilesize;
+			while (thisphasesize != 0) {
+				System.out.println("emit file size "+ thisphasesize/1024/1024+"M");
 				Process p = Runtime
 						.getRuntime()
 						.exec(new String[] { "/bin/sh", "-c",
-								"/home/dic/hadoop-1.1.2/bin/hadoop fs -rmr bkpbinputR/" });
+								hadoophome+"bin/hadoop fs -rmr bkpbinputR/" });
 				p.waitFor();
 				p.destroy();
 				RemoteSSH.batch();
@@ -106,8 +117,10 @@ public class RunOver {
 				long t11 = System.currentTimeMillis();
 				doStep2(args);
 				long t12 = System.currentTimeMillis();
-				all += (t12 - t11);
+				all += (t12 - t11); 
 				this.wait(5000);
+				thisphasesize = (long) RemoteSSH.getRemoteFilesSize();
+				emitfilesize += thisphasesize;
 			} 
 		}
 
@@ -116,7 +129,7 @@ public class RunOver {
 	public static void main(String[] args) throws Exception {
 		
 		new RunOver().dojob(args);
-		System.out.println("all:" + all);
+		System.out.println("all:" + all +" emitfilesize "+emitfilesize/1024/1024+"M");
 	}
 
 }
