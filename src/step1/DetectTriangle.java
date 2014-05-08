@@ -87,7 +87,7 @@ public class DetectTriangle {
 			Reducer<IntWritable, Text, IntWritable, Text> {
 		HashSet<Integer> notset = new HashSet<Integer>();
 		HashMap<Integer, Integer> cand = new HashMap<Integer, Integer>();
-		
+static int treesize = 0;
 		long allStart = 0;
 		long allEnd = 0;
 		private void readVerEdge(String s,
@@ -194,12 +194,14 @@ public class DetectTriangle {
 						} else {
 							stack.add(tmp);
 						}
+treesize++;
 						notset.add(fixp);
 						for (int fix : noneFixp) {
 							HashMap<Integer, Integer> tcd = genInterSet(cand,
 									fix);
 							HashSet<Integer> tnt = genInterSet(notset, fix);
 							CPD temp = new CPD(fix, level + 1, tcd, tnt);
+treesize++;							
 							if(tPhase < TimeThreshold){
 								if (tcd.size() <= sizeN) {
 									enumerateClique(temp,context);
@@ -210,6 +212,12 @@ public class DetectTriangle {
 							}else{
 								spillToDisk(temp,rnew);
 							}
+//							if (tcd.size() <= sizeN && tPhase < TimeThreshold) {
+//								enumerateClique(temp,context);
+//								///stack.add(temp);
+//							} else {
+//								spillToDisk(temp,rnew);
+//							}
 							
 							notset.add(fix);
 							if(tPhase < TimeThreshold){
@@ -272,6 +280,7 @@ public class DetectTriangle {
 			
 			allEnd = System.currentTimeMillis();
 			System.out.println("all time: "+(allEnd - allStart)/1000);
+System.out.println(treesize);
 		}
 
 		private int maxdeg;
@@ -280,6 +289,7 @@ public class DetectTriangle {
 				Context context)
 				throws IOException, InterruptedException {			
 			tmpKey = key.get();
+		
 			if (thenode.contains(tmpKey)) {
 //			if(true){
 				vertex.clear();
@@ -347,7 +357,7 @@ public class DetectTriangle {
 				
 				
 				long t2 ;//= System.currentTimeMillis();
-				CPD top = new CPD(tmpKey, 1, vertex, tnot);
+				CPD top = new CPD(tmpKey, 1, tcand, tnot);
 				Stack<CPD> stack = new Stack<CPD>();
 				stack.add(top);
 				if (tPhase < TimeThreshold) {
@@ -387,6 +397,7 @@ public class DetectTriangle {
 							//spillToDisk(tmp, raf);
 							stack.add(tmp);
 						}
+treesize++;
 						notset.add(fixp);
 						for (int fix : noneFixp) {
 							HashMap<Integer, Integer> tcd = genInterSet(cand,
@@ -401,6 +412,7 @@ public class DetectTriangle {
 								stack.add(temp);
 							}
 							notset.add(fix);
+treesize++;
 						}
 						if(tPhase < TimeThreshold){
 							t2 = System.currentTimeMillis();
@@ -476,7 +488,7 @@ public class DetectTriangle {
 		
 		public void test(String file) throws IOException, InterruptedException{
 			this.readEdgeInfo(file);
-			tmpKey = 133094;
+			tmpKey = 1081931;
 			Iterator<Map.Entry<Integer, Integer>> iter = vertex.entrySet()
 					.iterator();
 			HashMap<Integer, Integer> tcand = new HashMap<Integer, Integer>();
@@ -520,7 +532,7 @@ public class DetectTriangle {
 					fixp, maxdeg, noneFixp);
 			HashSet<Integer> tmpnot = genInterSet(notset, fixp);
 			CPD tmp = new CPD(fixp, level + 1, tmpcand, tmpnot);
-			if (tmpcand.size() <= 400340000) {
+			if (tmpcand.size() <= 900340000) {
 				enumerateClique(tmp,null);
 			} else {
 				spillToDisk(tmp, raf);
@@ -532,7 +544,7 @@ public class DetectTriangle {
 						fix);
 				HashSet<Integer> tnt = genInterSet(notset, fix);
 				CPD temp = new CPD(fix, level + 1, tcd, tnt);
-				if (tcd.size() <= 400340000) {
+				if (tcd.size() <= 900340000) {
 					enumerateClique(temp,null);
 				} else {
 					spillToDisk(temp, raf);
@@ -540,6 +552,7 @@ public class DetectTriangle {
 				}
 				notset.add(fix);
 			}
+			System.out.println(treesize);
 		}
 		/**
 		 * compute a small subgraph to finish
@@ -582,12 +595,14 @@ public class DetectTriangle {
 				HashSet<Integer> tmpnot = genInterSet(notset, fixp);
 				stack.add(new CPD(fixp, level + 1, tmpcand, tmpnot));
 				notset.add(fixp);
+treesize++;
 				for (int fix : noneFixp) {
 					HashMap<Integer, Integer> tcd = genInterSet(cand,
 							fix);
 					HashSet<Integer> tnt = genInterSet(notset, fix);
 					stack.add(new CPD(fix, level + 1, tcd, tnt));
 					notset.add(fix);
+treesize++;
 				}
 			}
 		}
@@ -764,16 +779,16 @@ public class DetectTriangle {
 				HashMap<Integer, Integer> cand, Context context)
 				throws IOException, InterruptedException {
 		
-			StringBuilder sb = new StringBuilder();
-			for (int i = 1; i < level; i++) {
-				sb.append(result.get(i)).append(" ");
-			}
-			for (int i : cand.keySet()) {
-				sb.append(i).append(" ");
-			}
-			context.write(new IntWritable(result.get(0)),
-					new Text(sb.toString()));
-		
+//			StringBuilder sb = new StringBuilder();
+//			for (int i = 1; i < level; i++) {
+//				sb.append(result.get(i)).append(" ");
+//			}
+//			for (int i : cand.keySet()) {
+//				sb.append(i).append(" ");
+//			}
+//			context.write(new IntWritable(result.get(0)),
+//					new Text(sb.toString()));
+//		treesize++;
 		}
 
 		private HashMap<Integer, Integer> genInterSet(
@@ -831,11 +846,33 @@ public class DetectTriangle {
 		public void readEdgeInfo(String filename) throws IOException{
 			BufferedReader reader = new BufferedReader(new FileReader(filename));
 			String line = "";
-			line = reader.readLine();
-			readVerEdge(line,verEdge,1);
+			while((line = reader.readLine())!=null){
+				readVerEdge(line,verEdge,1,1);
+			}
+			
 			for(int k:verEdge.keySet()){
 				vertex.put(k, 0);
 			}
+		}
+		private void readVerEdge(String s,
+				HashMap<Integer, HashSet<Integer>> edge,int i,int j) {
+			String[] items = s.split("\t");
+			String pos = items[1];
+			String[] ps = pos.split(",");
+			int p1 = Integer.parseInt(ps[0]);
+			int p2 = Integer.parseInt(ps[1]);
+			HashSet<Integer>adj1 = edge.get(p1);
+			HashSet<Integer>adj2 = edge.get(p2);
+			if(adj1 == null){
+				adj1 = new HashSet<Integer>();
+				edge.put(p1, adj1);
+			}
+			if(adj2==null){
+				adj2 = new HashSet<Integer>();
+				edge.put(p2, adj2);
+			}
+			adj1.add(p2);
+			adj2.add(p1);
 		}
 		private void readVerEdge(String s,
 				HashMap<Integer, HashSet<Integer>> edge,int i) {
@@ -853,18 +890,17 @@ public class DetectTriangle {
 	}
 
 
-/**
 public static void main(String[]args) throws NumberFormatException, IOException, InterruptedException{
 	DetectTriangle.BKPBReducer reducer = new DetectTriangle.BKPBReducer();
-	reducer.setup(null);
+//	reducer.setup(null);
 	reducer.test("/home/youli/CliqueHadoop/test");
-}*/
+}
 	/**
 	 * @param args
 	 * @throws IOException 
 	 * @throws ClassNotFoundException 
 	 * @throws InterruptedException 
-	*/
+	
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException {
 
 		Configuration conf = new Configuration();
@@ -897,5 +933,5 @@ public static void main(String[]args) throws NumberFormatException, IOException,
 		long t2 = System.currentTimeMillis();
 		System.out.println(pre + "-phase cost:"+(t2-t1));
 	} 
-
+*/
 }

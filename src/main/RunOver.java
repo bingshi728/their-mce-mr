@@ -15,10 +15,10 @@ import org.apache.hadoop.util.GenericOptionsParser;
 
 public class RunOver {
 	
-	public static final String usr = "dic";
-	public static final String passwd = "123123";
-	public static final String masterhost = "test122:19000";
-	public static final String hadoophome = "/home/"+usr+"/hadoop-1.1.2/";
+	public static final String usr = "wzhuo";
+	public static final String passwd = "111";
+	public static final String masterhost = "test164:19000";
+	public static final String hadoophome = "/home/"+usr+"/hadoopyouli/";
 	public static final boolean spillRes = true;
 	int arglen;
 	int pre = 0;
@@ -121,11 +121,11 @@ public class RunOver {
 				this.wait(5000);
 				thisphasesize = (long) RemoteSSH.getRemoteFilesSize();
 				emitfilesize += thisphasesize;
+				
 			} 
 		}
 
 	}
-
 	public static void main(String[] args) throws Exception {
 		
 		new RunOver().dojob(args);

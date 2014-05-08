@@ -116,7 +116,7 @@ public class BottleneckDetect {
 
 	public static class BKPBReducer extends
 			Reducer<PairTypeInt, Text, IntWritable, Text> {
-
+static int treesize = 0;
 		HashSet<Integer> notset = new HashSet<Integer>();
 		HashMap<Integer, Integer> cand = new HashMap<Integer, Integer>();
 		//boolean reducefinished = false;
@@ -284,6 +284,7 @@ public class BottleneckDetect {
 							continue;
 						}
 						int fixp = findMaxDegreePoint(cand);
+treesize++;
 						ArrayList<Integer> noneFixp = new ArrayList<Integer>(
 								cand.size() - maxdeg);
 						HashMap<Integer, Integer> tmpcand = genInterSet(cand,
@@ -298,20 +299,27 @@ public class BottleneckDetect {
 						}
 						notset.add(fixp);
 						for (int fix : noneFixp) {
+treesize++;
 							HashMap<Integer, Integer> tcd = genInterSet(cand,
 									fix);
 							HashSet<Integer> tnt = genInterSet(notset, fix);
 							CPD temp = new CPD(fix, level + 1, tcd, tnt);
 							if(tPhase < TimeThreshold){
-								if (tcd.size() <= sizeN) {
-									enumerateClique(temp,context);
-									//stack.add(temp);
-								} else {
-									stack.add(temp);
-								}
-							}else{
-								spillToDisk(temp,rnew);
+							if (tcd.size() <= sizeN) {
+								enumerateClique(temp,context);
+								///stack.add(temp);
+							} else {
+								stack.add(temp);
 							}
+						}else{
+							spillToDisk(temp,rnew);
+						}
+//						if (tcd.size() <= sizeN && tPhase < TimeThreshold) {
+//							enumerateClique(temp,context);
+//							///stack.add(temp);
+//						} else {
+//							spillToDisk(temp,rnew);
+//						}
 							notset.add(fix);
 							if(tPhase < TimeThreshold){
 								t2 = System.currentTimeMillis();
@@ -368,6 +376,7 @@ public class BottleneckDetect {
 			super.cleanup(context);
 			allEnd = System.currentTimeMillis();
 			System.out.println("all time: "+(allEnd - allStart)/1000);
+System.out.println(treesize);			
 		}
 		private int maxdeg;
 		long t1;
@@ -487,6 +496,7 @@ public class BottleneckDetect {
 						stack.add(tmp);
 					}
 					notset.add(fixp);
+treesize++;
 					for (int fix : noneFixp) {
 						HashMap<Integer, Integer> tcd = genInterSet(cand, fix);
 						HashSet<Integer> tnt = genInterSet(notset, fix);
@@ -499,6 +509,7 @@ public class BottleneckDetect {
 							stack.add(temp);
 						}
 						notset.add(fix);
+treesize++;
 					}
 
 					if(tPhase < TimeThreshold){
@@ -632,15 +643,15 @@ public class BottleneckDetect {
 				HashMap<Integer, Integer> cand, Context context)
 				throws IOException, InterruptedException {
 			
-			StringBuilder sb = new StringBuilder();
-			for (int i = 1; i < level; i++) {
-				sb.append(result.get(i)).append(" ");
-			}
-			for (int i : cand.keySet()) {
-				sb.append(i).append(" ");
-			}
-			context.write(new IntWritable(result.get(0)),
-					new Text(sb.toString()));
+//			StringBuilder sb = new StringBuilder();
+//			for (int i = 1; i < level; i++) {
+//				sb.append(result.get(i)).append(" ");
+//			}
+//			for (int i : cand.keySet()) {
+//				sb.append(i).append(" ");
+//			}
+//			context.write(new IntWritable(result.get(0)),
+//					new Text(sb.toString()));
 			
 		}
 
